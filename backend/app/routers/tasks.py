@@ -1,5 +1,7 @@
 """
 API routes for tasks and scheduling.
+All endpoints require a logged-in user. Tasks are scoped to the
+current user - no one can see or modify another user's tasks.
 """
 
 from datetime import date
@@ -8,11 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..db_models import TaskDB
+from ..db_models import TaskDB, UserDB
 from .. import schemas
 from ..converters import db_to_engine, engine_to_db
 from ..engine.models import Task, TaskCategory, SchedulingContext
 from ..engine.engine import run_full_cycle, add_task_dynamically
+from ..dependencies import get_current_user
 
 router = APIRouter()
 
@@ -24,10 +27,13 @@ def _category_or_default(value):
 
 
 @router.post("/tasks", response_model=schemas.TaskResponse)
-def create_task(payload: schemas.TaskCreate, db: Session = Depends(get_db)):
-    existing = db.query(TaskDB).filter(TaskDB.id == payload.id).first()
+def create_task(payload: schemas.TaskCreate, db: Session = Depends(get_db),
+                 current_user: UserDB = Depends(get_current_user)):
+    existing = db.query(TaskDB).filter(
+        TaskDB.id == payload.id, TaskDB.owner_id == current_user.id
+    ).first()
     if existing:
-        raise HTTPException(400, "Task with id '" + payload.id + "' already exists")
+        raise HTTPException(400, "You already have a task with id '" + payload.id + "'")
 
     engine_task = Task(
         id=payload.id,
@@ -42,6 +48,7 @@ def create_task(payload: schemas.TaskCreate, db: Session = Depends(get_db)):
         dependencies=payload.dependencies,
     )
     row = engine_to_db(engine_task)
+    row.owner_id = current_user.id
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -49,8 +56,9 @@ def create_task(payload: schemas.TaskCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/tasks", response_model=List[schemas.TaskResponse])
-def list_tasks(db: Session = Depends(get_db)):
-    rows = db.query(TaskDB).all()
+def list_tasks(db: Session = Depends(get_db),
+               current_user: UserDB = Depends(get_current_user)):
+    rows = db.query(TaskDB).filter(TaskDB.owner_id == current_user.id).all()
     result = []
     for r in rows:
         result.append(db_to_engine(r))
@@ -58,8 +66,11 @@ def list_tasks(db: Session = Depends(get_db)):
 
 
 @router.delete("/tasks/{task_id}")
-def delete_task(task_id: str, db: Session = Depends(get_db)):
-    row = db.query(TaskDB).filter(TaskDB.id == task_id).first()
+def delete_task(task_id: str, db: Session = Depends(get_db),
+                 current_user: UserDB = Depends(get_current_user)):
+    row = db.query(TaskDB).filter(
+        TaskDB.id == task_id, TaskDB.owner_id == current_user.id
+    ).first()
     if not row:
         raise HTTPException(404, "Task not found")
     db.delete(row)
@@ -68,8 +79,9 @@ def delete_task(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/schedule/run", response_model=schemas.ScheduleResult)
-def run_schedule(payload: schemas.ScheduleContextIn, db: Session = Depends(get_db)):
-    rows = db.query(TaskDB).all()
+def run_schedule(payload: schemas.ScheduleContextIn, db: Session = Depends(get_db),
+                  current_user: UserDB = Depends(get_current_user)):
+    rows = db.query(TaskDB).filter(TaskDB.owner_id == current_user.id).all()
     tasks = []
     for r in rows:
         tasks.append(db_to_engine(r))
@@ -100,8 +112,9 @@ def run_schedule(payload: schemas.ScheduleContextIn, db: Session = Depends(get_d
 
 
 @router.post("/schedule/dynamic-add", response_model=dict)
-def dynamic_add(payload: schemas.DynamicAddRequest, db: Session = Depends(get_db)):
-    rows = db.query(TaskDB).all()
+def dynamic_add(payload: schemas.DynamicAddRequest, db: Session = Depends(get_db),
+                 current_user: UserDB = Depends(get_current_user)):
+    rows = db.query(TaskDB).filter(TaskDB.owner_id == current_user.id).all()
     all_tasks = []
     for r in rows:
         all_tasks.append(db_to_engine(r))
@@ -113,7 +126,7 @@ def dynamic_add(payload: schemas.DynamicAddRequest, db: Session = Depends(get_db
     p = payload.new_task
 
     if p.id in row_map:
-        raise HTTPException(400, "Task with id '" + p.id + "' already exists - delete it first or use a different id")
+        raise HTTPException(400, "You already have a task with id '" + p.id + "'")
 
     if payload.context.today:
         context_today = payload.context.today
@@ -150,6 +163,7 @@ def dynamic_add(payload: schemas.DynamicAddRequest, db: Session = Depends(get_db
     report = add_task_dynamically(new_task, all_tasks, scheduled, waitlisted, context)
 
     new_row = engine_to_db(new_task)
+    new_row.owner_id = current_user.id
     db.add(new_row)
     for t in scheduled + waitlisted:
         if t.id in row_map:
