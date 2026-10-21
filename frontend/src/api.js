@@ -21,10 +21,10 @@ async function request(path, options, token) {
 }
 
 export const api = {
-  register: function (username, password) {
+  register: function (username, email, password) {
     return request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username: username, password: password }),
+      body: JSON.stringify({ username: username, email: email, password: password }),
     })
   },
   login: function (username, password) {
@@ -56,5 +56,17 @@ export const api = {
   },
   adminListUsers: function (token) {
     return request('/admin/users', {}, token)
+  },
+  forgotPassword: function (email) {
+    return request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email: email }),
+    })
+  },
+  resetPassword: function (email, code, newPassword) {
+    return request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email: email, code: code, new_password: newPassword }),
+    })
   },
 }

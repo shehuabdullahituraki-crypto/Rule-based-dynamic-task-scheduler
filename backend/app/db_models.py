@@ -34,5 +34,8 @@ class UserDB(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False, index=True)
+    email = Column(String, unique=True, nullable=True, index=True)
     hashed_password = Column(String, nullable=False)
     is_admin = Column(Integer, default=0)
+    reset_code = Column(String, nullable=True)
+    reset_code_expiry = Column(String, nullable=True)

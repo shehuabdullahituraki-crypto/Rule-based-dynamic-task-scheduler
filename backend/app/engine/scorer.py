@@ -30,7 +30,7 @@ def _urgency(task, today):
     days_left = (task.deadline - today).days
     if days_left <= 0:
         return 1.0
-    urgency = 1.0 - (days_left / 90.0)
+    urgency = 1.0 - (days_left / 5.0)
     if urgency < 0.0:
         return 0.0
     return urgency

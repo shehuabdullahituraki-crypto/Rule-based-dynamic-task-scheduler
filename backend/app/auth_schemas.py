@@ -1,5 +1,5 @@
 """
-Pydantic schemas for authentication (register/login).
+Pydantic schemas for authentication (register/login/password reset).
 """
 
 from pydantic import BaseModel
@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 class UserRegister(BaseModel):
     username: str
+    email: str
     password: str
 
 
@@ -28,3 +29,13 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    code: str
+    new_password: str

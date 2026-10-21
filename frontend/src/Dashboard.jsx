@@ -10,9 +10,11 @@ const STATUS_PILL = {
   completed: 'pill-completed',
 }
 
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+
 function emptyForm() {
   return {
-    id: '', name: '', category: 'urgent', deadline: '',
+    id: '', name: '', category: 'urgent', due_weekday: 'Monday',
     value: 0, penalty_if_missed: 0,
     effort_hours: 1, budget_required: 0, risk: 1,
   }
@@ -20,10 +22,24 @@ function emptyForm() {
 
 function emptyUrgent() {
   return {
-    id: '', name: '', category: 'urgent', deadline: '',
+    id: '', name: '', category: 'urgent', due_weekday: 'Monday',
     value: 0, penalty_if_missed: 0,
     effort_hours: 1, budget_required: 0, risk: 5,
   }
+}
+
+function weekdayToDate(weekdayName) {
+  const jsIndexMap = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5 }
+  const targetIndex = jsIndexMap[weekdayName]
+  const today = new Date()
+  const todayIndex = today.getDay()
+  let diff = targetIndex - todayIndex
+  if (diff < 0) {
+    diff += 7
+  }
+  const result = new Date(today)
+  result.setDate(today.getDate() + diff)
+  return result.toISOString().split('T')[0]
 }
 
 export default function Dashboard({ token, user, onLogout }) {
@@ -57,15 +73,17 @@ export default function Dashboard({ token, user, onLogout }) {
     refresh()
   }, [refresh])
 
-  function handleCreateTask(e) {
+ function handleCreateTask(e) {
     e.preventDefault()
-    if (!form.id || !form.name || !form.deadline) {
+    if (!form.id || !form.name || !form.due_weekday) {
       return
     }
     setLoading(true)
     setError(null)
     setSuccessMsg(null)
-    api.createTask(form, token)
+    const payload = { ...form, deadline: weekdayToDate(form.due_weekday) }
+    delete payload.due_weekday
+    api.createTask(payload, token)
       .then(function () {
         setSuccessMsg('Task "' + form.id + '" added successfully.')
         setTimeout(function () { setSuccessMsg(null) }, 2500)
@@ -108,9 +126,9 @@ export default function Dashboard({ token, user, onLogout }) {
       })
   }
 
-  function handleDynamicAdd(e) {
+function handleDynamicAdd(e) {
     e.preventDefault()
-    if (!urgentForm.id || !urgentForm.name || !urgentForm.deadline) {
+    if (!urgentForm.id || !urgentForm.name || !urgentForm.due_weekday) {
       return
     }
     setLoading(true)
@@ -119,7 +137,9 @@ export default function Dashboard({ token, user, onLogout }) {
       available_hours: Number(availableHours),
       available_budget: Number(availableBudget),
     }
-    api.dynamicAdd(urgentForm, context, token)
+    const payload = { ...urgentForm, deadline: weekdayToDate(urgentForm.due_weekday) }
+    delete payload.due_weekday
+    api.dynamicAdd(payload, context, token)
       .then(function (rep) {
         setReport(rep)
         setUrgentForm(emptyUrgent())
@@ -181,30 +201,18 @@ export default function Dashboard({ token, user, onLogout }) {
             })}
           </select>
 
-          <label>Deadline</label>
-          <input type="date" value={form.deadline} onChange={function (e) { setForm({ ...form, deadline: e.target.value }) }} />
+          <label>Due Day</label>
+          <select value={form.due_weekday} onChange={function (e) { setForm({ ...form, due_weekday: e.target.value }) }}>
+            {WEEKDAYS.map(function (d) {
+              return <option key={d} value={d}>{d}</option>
+            })}
+          </select>
 
-          <div className="row-2">
-            <div>
-              <label>Value gained</label>
-              <input type="number" value={form.value} onChange={function (e) { setForm({ ...form, value: e.target.value }) }} />
-            </div>
-            <div>
-              <label>Penalty if missed</label>
-              <input type="number" value={form.penalty_if_missed} onChange={function (e) { setForm({ ...form, penalty_if_missed: e.target.value }) }} />
-            </div>
-          </div>
+          <label>Value gained</label>
+          <input type="number" value={form.value} onChange={function (e) { setForm({ ...form, value: e.target.value }) }} />
 
-          <div className="row-2">
-            <div>
-              <label>Effort (hrs)</label>
-              <input type="number" value={form.effort_hours} onChange={function (e) { setForm({ ...form, effort_hours: e.target.value }) }} />
-            </div>
-            <div>
-              <label>Budget required</label>
-              <input type="number" value={form.budget_required} onChange={function (e) { setForm({ ...form, budget_required: e.target.value }) }} />
-            </div>
-          </div>
+         <label>Effort (hrs)</label>
+          <input type="number" value={form.effort_hours} onChange={function (e) { setForm({ ...form, effort_hours: e.target.value }) }} />
 
           <label>Risk (1-5)</label>
           <input type="number" min="1" max="5" value={form.risk} onChange={function (e) { setForm({ ...form, risk: e.target.value }) }} />
@@ -214,8 +222,8 @@ export default function Dashboard({ token, user, onLogout }) {
 
         <hr className="divider" />
 
-        <div className="section-title">Resource Capacity</div>
-        <label>Available hours</label>
+       <div className="section-title">Resource Capacity</div>
+        <label>Free Hours Per Day (applies to each weekday)</label>
         <input type="number" value={availableHours} onChange={function (e) { setAvailableHours(e.target.value) }} />
         <label>Available budget</label>
         <input type="number" value={availableBudget} onChange={function (e) { setAvailableBudget(e.target.value) }} />
@@ -237,10 +245,12 @@ export default function Dashboard({ token, user, onLogout }) {
               return <option key={c} value={c}>{c}</option>
             })}
           </select>
-          <label>Deadline</label>
-          <input type="date" value={urgentForm.deadline} onChange={function (e) { setUrgentForm({ ...urgentForm, deadline: e.target.value }) }} />
-          <label>Penalty if missed</label>
-          <input type="number" value={urgentForm.penalty_if_missed} onChange={function (e) { setUrgentForm({ ...urgentForm, penalty_if_missed: e.target.value }) }} />
+         <label>Due Day</label>
+          <select value={urgentForm.due_weekday} onChange={function (e) { setUrgentForm({ ...urgentForm, due_weekday: e.target.value }) }}>
+            {WEEKDAYS.map(function (d) {
+              return <option key={d} value={d}>{d}</option>
+            })}
+          </select>
           <label>Effort (hrs)</label>
           <input type="number" value={urgentForm.effort_hours} onChange={function (e) { setUrgentForm({ ...urgentForm, effort_hours: e.target.value }) }} />
           <label>Risk (1-5)</label>
